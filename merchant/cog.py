@@ -1,24 +1,29 @@
 import logging
+import os
 import random
 import tomllib
-import os
-from typing import TYPE_CHECKING
 from pathlib import Path
-from packaging.version import parse as parse_version
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-
+from packaging.version import parse as parse_version
 from tortoise.exceptions import BaseORMException, DoesNotExist
 from tortoise.timezone import now as tortoise_now
+
+from ballsdex import __version__ as ballsdex_version
 from ballsdex.core.currency_models import CurrencySettings, MoneyInstance
-from ballsdex.core.merchant_models import MerchantInstance, MerchantItem, MerchantSettings, merchant_items
+from ballsdex.core.merchant_models import (
+    MerchantInstance,
+    MerchantItem,
+    MerchantSettings,
+    merchant_items,
+)
 from ballsdex.core.models import Ball, BallInstance, Player
 from ballsdex.core.utils.buttons import ConfirmChoiceView
 from ballsdex.core.utils.paginator import FieldPageSource, Pages
 from ballsdex.settings import settings
-from ballsdex import __version__ as ballsdex_version
 
 if TYPE_CHECKING:
     from ballsdex.core.bot import BallsDexBot
@@ -62,6 +67,7 @@ class Merchant(commands.GroupCog):
         await ctx.send_help(ctx.command)
     
     @merchant.command()
+    @commands.is_owner()
     async def reloadcache(self, ctx: commands.Context["BallsDexBot"]):
         """
         Reload the cache of Merchant models.
@@ -103,7 +109,7 @@ class Merchant(commands.GroupCog):
             items = instance.items
         
         entries: list[tuple[str, str]] = [(x.name, await self.format_price(x.prize)) for x in items]
-        source = FieldPageSource(entries, per_page=merchant_settings.items, inline=True)
+        source = FieldPageSource(entries, per_page=merchant_settings.items, inline=True, clear_description=False)
         source.embed.title = f"{settings.bot_name} shop"
         source.embed.description = "Check out your items!\n-# Note: your items are different from other players"
 
@@ -232,18 +238,19 @@ class Merchant(commands.GroupCog):
             return
         
         await interaction.response.defer(ephemeral=True, thinking=True)
-        
-        instances = (
-            BallInstance
-            .filter(special_id__isnull=True, ball_id=token_ball.pk)
-            .order_by("-catch_date")
-            .limit(amount)
+
+        query = BallInstance.filter(
+            player__discord_id=interaction.user.id,
+            special_id__isnull=True,
+            ball_id=token_ball.pk,
         )
-        if await instances.count() < amount:
+        if (count := await query.count()) < amount:
             await interaction.followup.send(
-                f"You can't convert **{amount} tokens** because you don't have that amount."
+                f"You can't convert **{amount} tokens** because you don't have that amount.\n"
+                f"Actual amount: **{count} tokens**"
             )
             return
+        query = query.order_by("-catch_date").limit(amount)
 
         currency_settings = await self.get_curreny_settings()
         grammar = "token" if amount == 1 else "tokens"
@@ -262,7 +269,7 @@ class Merchant(commands.GroupCog):
         if not view.value:
             return
         
-        ids = await instances.values_list("id", flat=True)
+        ids = await query.values_list("id", flat=True)
         if parse_version(ballsdex_version) >= SOFT_DELETE_VERSION:
             await BallInstance.filter(id__in=ids).update(deleted=True)
         else:
