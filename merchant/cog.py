@@ -143,7 +143,7 @@ class Merchant(commands.GroupCog):
         except DoesNotExist:
             await interaction.response.send_message("You're not registred in the economy system yet.")
             return
-    
+
         has_item = await instance.items.filter(pk=item_id).exists()
         if not has_item:
             await interaction.response.send_message(
@@ -239,8 +239,9 @@ class Merchant(commands.GroupCog):
         
         await interaction.response.defer(ephemeral=True, thinking=True)
 
+        player, _ = await Player.get_or_create(discord_id=interaction.user.id)
         query = BallInstance.filter(
-            player__discord_id=interaction.user.id,
+            player=player,
             special_id__isnull=True,
             ball_id=token_ball.pk,
         )
@@ -276,7 +277,7 @@ class Merchant(commands.GroupCog):
             await BallInstance.filter(id__in=ids).delete()
         
         money_instance, created = await MoneyInstance.get_or_create(
-            player__discord_id=interaction.user.id,
+            player=player,
             defaults={"amount": merchant_settings.token_conversion_rate * amount}
         )
         if not created:
