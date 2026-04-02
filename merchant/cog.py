@@ -127,7 +127,7 @@ class Merchant(commands.GroupCog):
         source.embed.description = (
             "Check out your items! Your rotation will update "
             f"Your rotation will update {format_dt(instance.rotation_ends_at)}"
-            "\n-# Note: your items are different from other players"
+            "\n-# Note: Cost depends on rarity."
         )
 
         pages = Pages(source, interaction=interaction, compact=True)
